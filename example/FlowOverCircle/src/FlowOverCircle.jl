@@ -83,7 +83,7 @@ function train(;K = 1, cuda=true, η₀=1f-3, λ=1f-4, epochs=50)
     return learner
 end
 
-function train_gno(K = 1; cuda=true, η₀=1f-3, λ=1f-4, epochs=50)
+function train_gno(;K = 1, cuda=true, η₀=1f-3, λ=1f-4, epochs=50)
     @assert K >= 1
     @Info "Training with timewindow of size $K"
     if cuda && CUDA.has_cuda()
