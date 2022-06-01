@@ -38,12 +38,12 @@ function get_dataloader(;K::Int=1, ts::AbstractRange=LinRange(100, 11000, 10000)
 
     if flatten
         𝐱, 𝐲 = reshape(𝐱, 1, :, K ,n), reshape(𝐲, 1, :, K, n)
-        𝐱, 𝐲 = permute!(𝐱, [3, 2, 1, 4]), permute!(𝐲, [3, 2, 1, 4])
+        𝐱, 𝐲 = permutedims(𝐱, (3, 2, 1, 4)), permutedims(𝐲, (3, 2, 1, 4))
         𝐱, 𝐲 = dropdims(𝐱, dims = 3), dropdims(𝐲, dims = 3)
     else
         m = size(𝐱,3)
         𝐱, 𝐲 = reshape(𝐱, 1, :, m, K ,n), reshape(𝐲, 1, :, m, K, n)
-        𝐱, 𝐲 = permute!(𝐱, [4,2,3,1,5]), permute!(𝐲, [4,2,3,1,5])
+        𝐱, 𝐲 = permutedims(𝐱, (4,2,3,1,5)), permutedims(𝐲, (4,2,3,1,5))
         𝐱, 𝐲 = dropdims(𝐱, dims = 4), dropdims(𝐲, dims = 4)
     end
 
@@ -55,9 +55,17 @@ function get_dataloader(;K::Int=1, ts::AbstractRange=LinRange(100, 11000, 10000)
     return loader_train, loader_test
 end
 
+function restore(𝐲)
+    n = ndims(𝐲)
+    𝐲 = unsqueeze(𝐲, dims = n)    
+    𝐲 = n==4 ? permutedims(𝐲, (4,2,3,1,5)) : permutedims(𝐲, (3,2,1,4))
+    𝐲 = n==4 ? reshape(𝐲,1,size(𝐲,2),size(𝐲,3),:) : reshape(𝐲,1,size(𝐲,2),:)   
+    return 𝐲
+end
+
 function train(;K = 1, cuda=true, η₀=1f-3, λ=1f-4, epochs=50)
     @assert K >= 1
-    @Info "Training with timewindow of size $K"
+    @info "Training with timewindow of size $K"
     if cuda && CUDA.has_cuda()
         device = gpu
         CUDA.allowscalar(false)
@@ -70,7 +78,7 @@ function train(;K = 1, cuda=true, η₀=1f-3, λ=1f-4, epochs=50)
     model = MarkovNeuralOperator(ch=(K, 64, 64, 64, 64, 64, K), modes=(24, 24), σ=gelu)
     data = get_dataloader(K = K)
     optimiser = Flux.Optimiser(WeightDecay(λ), Flux.ADAM(η₀))
-    loss_func = l₂loss
+    loss_func(𝐲̂,𝐲) = l₂loss(restore(𝐲̂),restore(𝐲))
 
     learner = Learner(
         model, data, optimiser, loss_func,
@@ -85,7 +93,7 @@ end
 
 function train_gno(;K = 1, cuda=true, η₀=1f-3, λ=1f-4, epochs=50)
     @assert K >= 1
-    @Info "Training with timewindow of size $K"
+    @info "Training with timewindow of size $K"
     if cuda && CUDA.has_cuda()
         device = gpu
         CUDA.allowscalar(false)
@@ -106,7 +114,8 @@ function train_gno(;K = 1, cuda=true, η₀=1f-3, λ=1f-4, epochs=50)
     )
     data = get_dataloader(K = K, batchsize=16, flatten=true)
     optimiser = Flux.Optimiser(WeightDecay(λ), Flux.ADAM(η₀))
-    loss_func = l₂loss
+
+    loss_func(𝐲̂,𝐲) = l₂loss(restore(𝐲̂),restore(𝐲))
 
     learner = Learner(
         model, data, optimiser, loss_func,
